@@ -1,19 +1,12 @@
-/**
-    var rules = [
-        { obj: '1', required: true, message: '"realName"不能为空' },
-        { obj: '123', min: 3, max: 5, message: '长度在 3 到 5 个字符' },
-        { obj: '2018-11-12', type: 'Date', message: '日期格式' },
-    ]
-    if(!that.$Func.verifyData(rules)){return false};
- */
-export function verifyData(rules, inputThis, name) {
-    var rule,
+export function verifyData(pageThis, name) {
+    var rules = pageThis['rules'],
+        rule,
         rst = true
     if (name) {
-        rst = handleVerify(rules[name], inputThis[name])
+        rst = handleVerify(rules[name], pageThis[name])
     } else {
         for (let key in rules) {
-            rst = handleVerify(rules[key], inputThis[key])
+            rst = handleVerify(rules[key], pageThis[key])
             if (!rst) break
         }
     }
@@ -105,7 +98,6 @@ export function verifyData(rules, inputThis, name) {
         return true
         function error(message) {
             var msg = message || rule.message
-            console.log(msg)
             uni.showToast({
                 title: msg,
                 duration: 2000,

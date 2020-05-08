@@ -36,10 +36,10 @@ export default {
     },
     methods: {
         validate() {
-            return verifyData(this.rules, this);
+            return verifyData(this);
         },
         verifySingle(name) {
-            verifyData(this.rules, this, name);
+            verifyData(this, name);
         }
     }
 };
