@@ -1,7 +1,6 @@
 <template>
-	<view class="crt-canvas">
-		<view>
-		</view>
+	<view class="crt-canvas"
+				v-show="canvasShow">
 		<canvas class="myCanvas"
 						:canvas-id="canvasId"
 						:style="{width:width+'px',height:height +'px'}" />
@@ -15,7 +14,7 @@ export default {
 	 * @、单位均为px
 	 * @、数组key约小，画布层数越低，即数组第一个为底层，最后一个为最上面层。
 	 * @、先绘制里如果有用相关设置会
-	 * @、type：img=绘图，text=文字
+	 * @、type：img=绘图，text=文字,circleImg=图片剪裁为正圆形
 	 * @、ctxSet：某项的ctx个性设置，可能会影响到上一层的对应设置，所以需有个性设置的可以最后进行绘制。
 	 * @、画布合成后会使用canvasToTempFilePath生成一张缓存图片，这个图片可用于分享的预览图片。
 	 * 
@@ -59,6 +58,7 @@ export default {
 	 * @、获取画布地址：父级调用方法this.$refs.crtCanvas.getPath()。在组件里change事件会返回合成后的本地图片
 		<crt-canvas ref="crtCanvas"
 					@change="canvasChange"
+					@act="canvasAct"
 					:canvasId="'uCanvas'"
 					width="650"
 					height="876"
@@ -101,6 +101,7 @@ export default {
 	},
 	data () {
 		return {
+			canvasShow: false,
 			canvasW: '200',
 			canvasH: '200',
 		}
@@ -109,12 +110,15 @@ export default {
 		canvasHandle () {
 			return new Promise(async (resolve, reject) => {
 				let that = this
+				this.canvasShow = true
 				uni.showLoading({ title: '加载中', mask: true });
 				var defaultSet = this.defaultSet
-				var canvasItems = this.canvasItems
+				var canvasItems = this.canvasItems.concat()
+				console.log('canvasItems', canvasItems);
 				// initialize cavase
-				var ctx = uni.createCanvasContext(this.canvasId, that)
-				ctx.clearRect(0, 0, this.width, this.height)
+                var ctx = uni.createCanvasContext(this.canvasId, that)
+                console.debug('如果报错[Property or method "toJSON" is not defined...]，或是小程序的createCanvasContext自身问题，真机访问则正常运行。');
+                ctx.clearRect(0, 0, this.width, this.height)
 				if (this.backgroundColor) {
 					ctx.fillStyle = this.backgroundColor
 					ctx.fillRect(0, 0, this.width, this.height)
@@ -134,19 +138,37 @@ export default {
 					}
 					// 图像绘制
 					if (item.type === 'img') {
-						await that.getImgInfo(item.path).then(res => {
+						await this.getImgInfo(item.path).then(res => {
 							ctx.drawImage(res.path, set[0], set[1], set[2], set[3])
 						}).catch(ret => {
 							uni.hideLoading();
 						})
 					}
-					if (item.type === 'base64') {
-						await that.base64ToImg(item.path).then(res => {
-							item.path = res
+					if (item.type === 'circleImg') {
+						await this.getImgInfo(item.path).then(res => {
+							var unit = 1
+							var avatorWidth = unit * set[2]
+								, avatorHeight = unit * set[3];
+							var avatarurlX = unit * set[0];   //绘制的头像在画布上的位置
+							var avatarurlY = unit * set[1];   //绘制的头像在画布上的位置
+							ctx.save(); // 保存当前状态
+							ctx.beginPath(); //开始绘制
+							ctx.arc(avatorWidth / 2 + avatarurlX, avatorHeight / 2 + avatarurlY, avatorWidth / 2, 0, Math.PI * 2, false); // 绘制圆形
+							ctx.clip(); // 剪裁圆形
+							ctx.drawImage(res.path, set[0], set[1], avatorWidth, avatorWidth);
+							ctx.restore(); // 重置状态
 						}).catch(ret => {
 							uni.hideLoading();
 						})
-						await that.getImgInfo(item.path).then(res => {
+					}
+					if (item.type === 'base64') {
+						var base64Path = ''
+						await this.base64ToImg(item.path).then(res => {
+							base64Path = res
+						}).catch(ret => {
+							uni.hideLoading();
+						})
+						await this.getImgInfo(base64Path).then(res => {
 							ctx.drawImage(res.path, set[0], set[1], set[2], set[3])
 						}).catch(ret => {
 							uni.hideLoading();
@@ -160,8 +182,11 @@ export default {
 						ctx.fillText(item.content, set[0], set[1], set[2])
 					}
 				}
+				console.log('t0');
+
 				ctx.draw(true, () => {
-					that.canvasToTempFilePath().then(res => {
+					console.log('t1');
+					this.canvasToTempFilePath().then(res => {
 						this.$emit('change', res.tempFilePath);
 						resolve(res.tempFilePath)
 						uni.hideLoading();
@@ -169,6 +194,7 @@ export default {
 						reject(ret)
 						uni.hideLoading();
 					})
+					this.canvasShow = false
 				})
 			})
 		},
@@ -207,10 +233,15 @@ export default {
 		},
 		save (imgPath) {
 			this.canvasHandle().then(res => {
-				this.saveImageToPhotosAlbum(res)
+				this.saveImageToPhotosAlbum(res).then(res => {
+					this.$emit('act', { status: 1, act: 'saveImageToPhotosAlbum', errMsg: res.errMsg })
+				}).catch(ret => {
+					this.$emit('act', { status: 0, act: 'saveImageToPhotosAlbum', errMsg: ret.errMsg })
+				})
 			})
 		},
 		preview (imgPath) {
+            console.log('preview');
 			this.canvasHandle().then(res => {
 				uni.previewImage({
 					current: res,
@@ -239,7 +270,7 @@ export default {
 				let that = this
 				// 先获得一个文件实例
 				var fileManager = wx.getFileSystemManager()
-				var tempImg = `${wx.env.USER_DATA_PATH}/tempImg.png`
+				var tempImg = `${wx.env.USER_DATA_PATH}/tempImg${Math.random() * 100}.png`
 				// 把图片base64格式转存到本地，用于canvas绘制
 				fileManager.writeFile({
 					filePath: tempImg,
